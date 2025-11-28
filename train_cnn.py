@@ -1,51 +1,51 @@
 import os
+from typing import Tuple
 
-from tensorflow.keras.layers import (Conv2D, Dense, Dropout, Flatten, Input,
-                                     MaxPooling2D)
-from tensorflow.keras.models import Model
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import numpy as np
+import tensorflow as tf
+from sklearn.utils.class_weight import compute_class_weight
+from tensorflow.keras import Model
+from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 
-def build_model(input_shape=(150, 150, 3), num_classes: int = 3) -> Model:
-    """Define una CNN sencilla con tres bloques convolucionales para clasificación multiclase."""
-    inputs = Input(shape=input_shape)
-    x = Conv2D(32, (3, 3), activation="relu", padding="same")(inputs)
-    x = MaxPooling2D((2, 2))(x)
-
-    x = Conv2D(64, (3, 3), activation="relu", padding="same")(x)
-    x = MaxPooling2D((2, 2))(x)
-
-    x = Conv2D(128, (3, 3), activation="relu", padding="same")(x)
-    x = MaxPooling2D((2, 2))(x)
-
-    x = Flatten()(x)
-    x = Dropout(0.3)(x)
-    outputs = Dense(num_classes, activation="softmax")(x)
-
-    model = Model(inputs=inputs, outputs=outputs)
-    model.compile(
-        optimizer="adam",
-        loss="categorical_crossentropy",
-        metrics=["accuracy"],
-    )
-
-    return model
+IMAGE_SIZE: Tuple[int, int] = (224, 224)
+BATCH_SIZE = 32
+VALIDATION_SPLIT = 0.2
+EPOCHS = 15
+MODEL_FILENAME = "modelo_perros_pro.keras"
 
 
-def get_generators(base_dir: str, image_size=(150, 150), batch_size=32):
-    """Crea generadores de entrenamiento y validación con aumento y normalización."""
+def create_data_generators(
+    base_dir: str = "data",
+    image_size: Tuple[int, int] = IMAGE_SIZE,
+    batch_size: int = BATCH_SIZE,
+    validation_split: float = VALIDATION_SPLIT,
+):
+    """Crea generadores de datos con aumento agresivo y normalización 1./255."""
+
     train_dir = os.path.join(base_dir, "train")
+    if not os.path.isdir(train_dir):
+        raise FileNotFoundError(f"No se encontró el directorio de entrenamiento: {train_dir}")
 
+    seed = 42
     train_datagen = ImageDataGenerator(
         rescale=1.0 / 255,
-        rotation_range=20,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        shear_range=0.1,
-        zoom_range=0.1,
+        rotation_range=30,
+        zoom_range=0.2,
+        brightness_range=(0.8, 1.2),
+        width_shift_range=0.2,
+        height_shift_range=0.2,
         horizontal_flip=True,
-        validation_split=0.2,
+        fill_mode="nearest",
+        validation_split=validation_split,
+    )
+
+    validation_datagen = ImageDataGenerator(
+        rescale=1.0 / 255,
+        validation_split=validation_split,
     )
 
     train_generator = train_datagen.flow_from_directory(
@@ -55,42 +55,98 @@ def get_generators(base_dir: str, image_size=(150, 150), batch_size=32):
         class_mode="categorical",
         subset="training",
         shuffle=True,
+        seed=seed,
     )
 
-    validation_generator = train_datagen.flow_from_directory(
+    validation_generator = validation_datagen.flow_from_directory(
         train_dir,
         target_size=image_size,
         batch_size=batch_size,
         class_mode="categorical",
         subset="validation",
         shuffle=False,
+        seed=seed,
     )
 
     return train_generator, validation_generator
 
 
-def train(base_dir: str = "data", epochs: int = 50, batch_size: int = 32):
-    """Entrena la CNN y guarda el mejor modelo en formato .keras."""
-    train_generator, validation_generator = get_generators(
-        base_dir, batch_size=batch_size
+def build_transfer_model(
+    input_shape: Tuple[int, int, int] = (*IMAGE_SIZE, 3),
+    num_classes: int = 3,
+) -> Model:
+    """Construye un modelo transfer learning basado en MobileNetV2 congelado."""
+
+    base_model = MobileNetV2(
+        include_top=False,
+        weights="imagenet",
+        input_shape=input_shape,
     )
-    print(train_generator.class_indices)
-    model = build_model(
-        input_shape=(*train_generator.image_shape[:2], 3),
-        num_classes=len(train_generator.class_indices),
+    base_model.trainable = False
+
+    inputs = tf.keras.Input(shape=input_shape)
+    x = base_model(inputs, training=False)
+    x = GlobalAveragePooling2D()(x)
+    x = Dense(128, activation="relu")(x)
+    x = Dropout(0.5)(x)
+    outputs = Dense(num_classes, activation="softmax")(x)
+
+    model = Model(inputs=inputs, outputs=outputs)
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(),
+        loss="categorical_crossentropy",
+        metrics=["accuracy"],
     )
 
+    return model
+
+
+def train(
+    base_dir: str = "data",
+    image_size: Tuple[int, int] = IMAGE_SIZE,
+    batch_size: int = BATCH_SIZE,
+    epochs: int = EPOCHS,
+):
+    """Entrena el modelo con MobileNetV2 y guarda el mejor checkpoint."""
+
+    train_generator, validation_generator = create_data_generators(
+        base_dir=base_dir, image_size=image_size, batch_size=batch_size
+    )
+    num_classes = train_generator.num_classes
+    print(f"Clases detectadas: {train_generator.class_indices}")
+
+    model = build_transfer_model(
+        input_shape=(*image_size, 3),
+        num_classes=num_classes,
+    )
+
+    class_indices = train_generator.class_indices
+    class_counts = train_generator.classes
+    class_weight_values = compute_class_weight(
+        class_weight="balanced",
+        classes=np.array(list(class_indices.values())),
+        y=class_counts,
+    )
+    class_weight_dict = {
+        class_name: weight
+        for class_name, weight in zip(class_indices.keys(), class_weight_values)
+    }
+    print("Pesos por clase:")
+    for class_name, weight in class_weight_dict.items():
+        print(f"- {class_name}: {weight:.4f}")
+
+    checkpoint_path = os.path.join(base_dir, MODEL_FILENAME)
     callbacks = [
-        EarlyStopping(
-            monitor="val_loss",
-            patience=10,
-            restore_best_weights=True,
-            verbose=1,
-        ),
         ModelCheckpoint(
-            filepath=os.path.join(base_dir, "modelo_multiclase.keras"),
+            filepath=checkpoint_path,
             monitor="val_accuracy",
             save_best_only=True,
+            verbose=1,
+        ),
+        EarlyStopping(
+            monitor="val_loss",
+            patience=5,
+            restore_best_weights=True,
             verbose=1,
         ),
     ]
@@ -100,10 +156,13 @@ def train(base_dir: str = "data", epochs: int = 50, batch_size: int = 32):
         epochs=epochs,
         validation_data=validation_generator,
         callbacks=callbacks,
+        class_weight={
+            class_indices[class_name]: weight
+            for class_name, weight in class_weight_dict.items()
+        },
     )
 
-    save_path = os.path.join(base_dir, "modelo_multiclase.keras")
-    print(f"Modelo guardado en {save_path}")
+    print(f"Mejor modelo guardado en {checkpoint_path}")
 
 
 if __name__ == "__main__":

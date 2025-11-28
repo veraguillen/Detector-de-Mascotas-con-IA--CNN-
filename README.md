@@ -12,6 +12,12 @@ La aplicación ha sido entrenada con una Red Neuronal Convolucional (CNN) person
 - 🎯 Precisión mejorada con umbral de confianza ajustable
 - 🛠️ Panel de depuración integrado para análisis detallado
 
+## ✨ Novedades de la Versión 2.0
+- **Cerebro Nuevo:** Hemos migrado de una CNN simple a **MobileNetV2**.
+- **Precisión:** Aumentada del ~70% al **~98%**.
+- **Anti-Falsos Positivos:** Sistema de pesos calibrados para evitar que confunda humanos con mascotas.
+- **Interfaz:** Nuevo diseño responsivo y panel de depuración técnica.
+
 ## 🎮 Uso
 
 1. Abre la aplicación en tu navegador (se abrirá automáticamente al ejecutar `streamlit run app.py`)
@@ -66,7 +72,19 @@ El modelo es una Red Neuronal Convolucional (CNN) entrenada desde cero con las s
 
 ## 🌐 Despliegue
 
-La aplicación está diseñada para desplegarse fácilmente en Streamlit Cloud.
+La aplicación está desplegada en Streamlit Cloud y puede ser accedida en:
+
+🔗 [https://detector-mascotas.streamlit.app/](https://detector-mascotas.streamlit.app/)
+
+### Desplegar localmente
+
+Si prefieres ejecutar la aplicación en tu entorno local:
+
+1. Sigue los pasos de instalación en la sección [📦 Instalación y Uso Local](#-instalación-y-uso-local)
+2. Ejecuta la aplicación con:
+   ```bash
+   streamlit run app.py
+
 Desarrollado con ❤️ por Vera Guillen
 
 

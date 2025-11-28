@@ -39,8 +39,13 @@ Thumbs.db
 .env
 *.env
 
+# IGNORAR IMÁGENES DE ENTRENAMIENTO (¡IMPORTANTE!)
+data/train/
+data/validation/
+data/downloads/
 
-
+# PERO SÍ SUBIR EL MODELO (Excepción)
+!data/*.keras
 # Jupyter Notebook
 .ipynb_checkpoints
 
