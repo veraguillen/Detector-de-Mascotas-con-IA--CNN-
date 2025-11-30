@@ -1,0 +1,20 @@
+{
+    "image_size": [
+        224,
+        224
+    ],
+    "batch_size": 32,
+    "epochs": 15,
+    "learning_rate": 0.001,
+    "class_indices": {
+        "cats": 0,
+        "dogs": 1,
+        "others": 2
+    },
+    "class_weights": {
+        "cats": 1.4130952380952382,
+        "dogs": 1.4130952380952382,
+        "others": 0.6310473152578415
+    },
+    "timestamp": "20251130_170535"
+}
